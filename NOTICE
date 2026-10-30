@@ -1,0 +1,26 @@
+GSMArena Morphe Patches
+Copyright (C) 2026
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Third-party code and inspiration:
+- MorpheApp/morphe-patches-template (GPL-3.0) — project structure, Gradle
+  configuration, patch list generator and release workflow.
+- jkennethcarino/adobo (GPL-3.0) — the Google Mobile Ads SDK fingerprint
+  approach in patches/ads/Fingerprints.kt (AdLoadFingerprint, AdLoaderLoadAdFingerprint,
+  AppOpenAdLoadFingerprint, ShowFingerprint, BaseAdViewFingerprint, BannerAdFingerprint,
+  abstractAdViewAdapterFingerprints, mediationFingerprints).
+
+This project is not affiliated with, endorsed by, or connected to GSMArena.com,
+Google, or the Morphe project in any way.

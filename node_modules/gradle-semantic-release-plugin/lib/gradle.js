@@ -1,0 +1,213 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getCommand = getCommand;
+exports.getTaskToPublish = getTaskToPublish;
+exports.getVersion = getVersion;
+exports.buildOptions = buildOptions;
+exports.publishArtifact = publishArtifact;
+const child_process_1 = require("child_process");
+const fs_1 = require("fs");
+const path_1 = require("path");
+const split = require("split2");
+const INFO_ARTIFACTORY = `Two publishing plugins have found: Gradle Artifactory and Maven Publish.
+Gradle Artifactory is used for release.`;
+const INFO_PUBLISH_PLUGINS = `Two publishing plugins have found: Java Gradle Plugin and Maven Publish.
+Java Gradle Plugin is used for release.`;
+const INFO_GRADLE_NEXUS_PLUGINS = `Two publishing plugins have found: Gradle Nexus Publish Plugin and Maven Publish.
+Gradle Nexus Publish Plugin is used for release.`;
+const ERROR_MULTIPLE_PLUGIN = "Found multiple tasks to publish";
+/**
+ * @param {string} cwd the path of current working directory
+ * @return A promise that resolves name of command to trigger Gradle
+ */
+function getCommand(cwd) {
+    return new Promise((resolve, reject) => {
+        (0, fs_1.access)((0, path_1.join)(cwd, "gradlew"), fs_1.constants.F_OK, (err) => {
+            if (err) {
+                if (err.code === "ENOENT") {
+                    resolve("gradle");
+                }
+                else {
+                    reject(err);
+                }
+            }
+            else {
+                resolve("./gradlew");
+            }
+        });
+    });
+}
+/**
+ * @param {string} cwd the path of current working directory
+ * @return A promise that resolves name of task to publish artifact
+ */
+function getTaskToPublish(cwd, env, logger) {
+    return new Promise(async (resolve, reject) => {
+        const command = await getCommand(cwd);
+        const child = (0, child_process_1.spawn)(command, ["tasks", "-q"], {
+            cwd,
+            env,
+            stdio: ["inherit", "pipe"],
+        });
+        if (child.stdout === null || child.stderr == null) {
+            reject(new Error("Unexpected error: stdout or stderr of subprocess is null"));
+        }
+        else {
+            let tasks = [];
+            child.stdout.setEncoding("utf8");
+            child.stdout.pipe(split()).on("data", (line) => {
+                if (line.startsWith("artifactoryDeploy -")) {
+                    // Plugins Gradle Artifactory Plugin and Maven Publish Plugin are often used together
+                    if (tasks.length !== 0 && tasks[0] !== "publish") {
+                        reject(new Error(ERROR_MULTIPLE_PLUGIN));
+                    }
+                    if (tasks.length !== 0 && tasks[0] === "publish") {
+                        logger.info(INFO_ARTIFACTORY);
+                    }
+                    tasks = ["artifactoryDeploy"];
+                }
+                else if (line.startsWith("artifactoryPublish -")) {
+                    // Plugins Gradle Artifactory Plugin and Maven Publish Plugin are often used together
+                    if (tasks.length !== 0 && tasks[0] !== "publish") {
+                        reject(new Error(ERROR_MULTIPLE_PLUGIN));
+                    }
+                    if (tasks.length !== 0 && tasks[0] === "publish") {
+                        logger.info(INFO_ARTIFACTORY);
+                    }
+                    tasks = ["artifactoryPublish"];
+                }
+                else if (line.startsWith("publish -")) {
+                    // Plugins Gradle Artifactory Plugin and Maven Publish Plugin are often used together
+                    if (tasks.length !== 0 &&
+                        tasks[0] !== "artifactoryDeploy" &&
+                        tasks[0] !== "artifactoryPublish" &&
+                        tasks[0] !== "publishPlugins" &&
+                        tasks[0] !== "publishToSonatype") {
+                        reject(new Error(ERROR_MULTIPLE_PLUGIN));
+                    }
+                    if (tasks.length != 0 && (tasks[0] === "artifactoryDeploy" || tasks[0] === "artifactoryPublish")) {
+                        logger.info(INFO_ARTIFACTORY);
+                    }
+                    else if (tasks.length != 0 && tasks[0] === "publishPlugins") {
+                        logger.info(INFO_PUBLISH_PLUGINS);
+                    }
+                    else if (tasks.length != 0 && tasks[0] === "publishToSonatype") {
+                        logger.info(INFO_GRADLE_NEXUS_PLUGINS);
+                    }
+                    else {
+                        tasks = ["publish"];
+                    }
+                }
+                else if (line.startsWith("uploadArchives -")) {
+                    if (tasks.length != 0) {
+                        reject(new Error(ERROR_MULTIPLE_PLUGIN));
+                    }
+                    tasks = ["uploadArchives"];
+                }
+                else if (line.startsWith("publishPlugins -")) {
+                    if (tasks.length != 0 && tasks[0] === "publish") {
+                        logger.info(INFO_PUBLISH_PLUGINS);
+                    }
+                    else if (tasks.length !== 0) {
+                        reject(new Error(ERROR_MULTIPLE_PLUGIN));
+                    }
+                    tasks = ["publishPlugins"];
+                }
+                else if (line.startsWith("closeAndReleaseSonatypeStagingRepository")) {
+                    if (tasks.length !== 0) {
+                        reject(new Error(ERROR_MULTIPLE_PLUGIN));
+                    }
+                    tasks = [
+                        "publishToSonatype",
+                        "closeAndReleaseSonatypeStagingRepository",
+                    ];
+                }
+                logger.debug(line);
+            });
+            child.stderr.setEncoding("utf8");
+            child.stderr.pipe(split()).on("data", (line) => {
+                logger.error(line);
+            });
+            child.on("close", (code) => {
+                if (code !== 0) {
+                    reject(new Error(`Unexpected error: Gradle failed with status code ${code}`));
+                }
+                resolve(tasks);
+            });
+            child.on("error", (err) => {
+                reject(err);
+            });
+        }
+    });
+}
+/**
+ * @param {string} cwd the path of current working directory
+ * @return A promise that resolves version of the target project
+ */
+function getVersion(cwd, env) {
+    return new Promise(async (resolve, reject) => {
+        const command = await getCommand(cwd);
+        const child = (0, child_process_1.spawn)(command, ["properties", "-q"], {
+            cwd,
+            env,
+            stdio: ["inherit", "pipe"],
+        });
+        if (child.stdout === null) {
+            reject(new Error("Unexpected error: stdout of subprocess is null"));
+        }
+        else {
+            let version = "";
+            child.stdout.pipe(split()).on("data", (line) => {
+                if (line.startsWith("version:")) {
+                    version = line.substring("version:".length).trim();
+                }
+            });
+            child.on("close", (code) => {
+                if (code !== 0) {
+                    reject(new Error(`Unexpected error: Gradle failed with status code ${code}`));
+                }
+                resolve(version);
+            });
+            child.on("error", (err) => {
+                reject(err);
+            });
+        }
+    });
+}
+function buildOptions(env) {
+    const options = [];
+    /* tslint:disable:no-string-literal */
+    if (env["GRADLE_PUBLISH_KEY"]) {
+        options.push(`-Pgradle.publish.key=${env["GRADLE_PUBLISH_KEY"]}`);
+    }
+    if (env["GRADLE_PUBLISH_SECRET"]) {
+        options.push(`-Pgradle.publish.secret=${env["GRADLE_PUBLISH_SECRET"]}`);
+    }
+    /* tslint:enable:no-string-literal */
+    return options;
+}
+function publishArtifact(cwd, env, logger) {
+    return new Promise(async (resolve, reject) => {
+        const command = getCommand(cwd);
+        const task = await getTaskToPublish(cwd, env, logger);
+        const options = [...task, "-q"].concat(buildOptions(env));
+        logger.info(`launching child process with options: ${options.join(" ")}`);
+        const child = (0, child_process_1.spawn)(await command, options, { cwd, env });
+        child.stdout.setEncoding("utf8");
+        child.stdout.pipe(split()).on("data", (line) => {
+            logger.debug(line);
+        });
+        child.stderr.setEncoding("utf8");
+        child.stderr.pipe(split()).on("data", (line) => {
+            logger.error(line);
+        });
+        child.on("close", (code) => {
+            if (code !== 0) {
+                reject(`Failed to publish: Gradle failed with status code ${code}.`);
+            }
+            else {
+                resolve(void 0);
+            }
+        });
+    });
+}

@@ -106,3 +106,9 @@ GPL-3.0. The Google Mobile Ads SDK kill-switch fingerprints are adapted from
 [jkennethcarino/adobo](https://github.com/jkennethcarino/adobo) (GPL-3.0) and the project
 structure follows the official
 [MorpheApp/morphe-patches-template](https://github.com/MorpheApp/morphe-patches-template).
+
+## Available patches
+
+<!-- PATCHES_START EXPANDED -->
+
+<!-- PATCHES_END -->
